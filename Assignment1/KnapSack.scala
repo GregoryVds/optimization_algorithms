@@ -7,9 +7,7 @@ class KnapsackBranchAndBound(items: Array[(Int,Int,Double,Int)], capacity: Int) 
     val weight  = items.map(x => x._2)
     val ratio   = items.map(x => x._3)
     val index   = items.map(x => x._4)
-
-    val n = items.length
-    var bestSolution = 0
+    val n       = items.length
 
     def partialWeight(candidate: Array[Int]) =
         (0 until candidate.length).map(i => candidate(i)*weight(i)).sum
@@ -17,17 +15,18 @@ class KnapsackBranchAndBound(items: Array[(Int,Int,Double,Int)], capacity: Int) 
     def candidateValue(candidate: Array[Int]) =
         (0 until candidate.length).map(i => candidate(i)*value(i)).sum
 
-    def root() = Array[Int]()
+    def root() = (optimisticHeuristic(Array[Int]()), 0, Array[Int]())
 
-    def reject(candidate: Array[Int]) =
+    def exceedCapacity(candidate: Array[Int]) =
         partialWeight(candidate) > capacity
 
-    def accept(candidate: Array[Int]) =
-        candidate.length == items.length && candidateValue(candidate) > bestSolution
-
-    def children(candidate: Array[Int]) : Seq[Array[Int]] =
-        if (candidate.length == n) Seq()
-        else Seq(candidate:+1, candidate:+0)
+    def children(candidate: (Double, Int, Array[Int])) : Seq[(Double, Int, Array[Int])] =
+        if (candidate._3.length == n) Seq()
+        else {
+            val leftChild = (optimisticHeuristic(candidate._3), candidate._2+value(candidate._3.length), candidate._3:+1)
+            val rightChild = (optimisticHeuristic(candidate._3), candidate._2, candidate._3:+0)
+            Seq(leftChild, rightChild)
+        }
 
     def output(candidate: Array[Int]) {
         var solution = Array.fill(n){0}
@@ -37,15 +36,10 @@ class KnapsackBranchAndBound(items: Array[(Int,Int,Double,Int)], capacity: Int) 
         println(solution.mkString(" "))
     }
 
-    // def checkTrivialSolution(candidate: Array[Int])
-    //     true
-
+    // CurrentPartialWeight + PartialItemsKnapSack for remaining capacity/items
     def optimisticHeuristic(candidate: Array[Int]) : Double = {
-        // printf("Computing optimistic heuristic for %s \n", candidate.mkString(" "))
         var currentValue : Double  = candidateValue(candidate)
         var currentWeight : Double = partialWeight(candidate)
-        //// println(s"Current_value:$currentValue and current_weight: $currentWeight")
-
         breakable {
             for (i <- candidate.length until items.length) {
                 if ((weight(i) + currentWeight) < capacity) {
@@ -54,18 +48,12 @@ class KnapsackBranchAndBound(items: Array[(Int,Int,Double,Int)], capacity: Int) 
                 } else {
                     val capacityLeft = (capacity - currentWeight)
                     val fractionOfLastItem = capacityLeft/weight(i)
-                    // printf("Fraction %f of item %d\n", fractionOfLastItem, (i+1))
                     currentValue += fractionOfLastItem*value(i)
                     break
                 }
             }
         }
-        //println(s"Total value of: $currentValue")
         currentValue
-    }
-
-    def partialKnapsackValue(candidate: Array[Int]) {
-        var currentWeight = partialWeight(candidate)
     }
 }
 
@@ -81,56 +69,48 @@ object App {
 
         // Fill array of items
         val items  = new Array[(Int, Int, Double, Int)](itemsCount)
-        var value  = 0 // Declare here for reuse in loop.
-        var weight = 0
-        var index  = 0
-        for (line <- lines){
+        var value, weight, index: Int = 0; // Declare here for reuse in loop.
+        for (line <- lines) {
             value  = line.split(" ")(0).toInt
             weight = line.split(" ")(1).toInt
             items(index) = (value, weight, value/weight.toDouble, index)
-            index = index+1
+            index +=1
         }
 
-        val sortedItems = items.sortBy(r => (-r._3, r._2))
+        // Check for trivial
+        if (capacity > items.map(x => x._2).sum) {
+            println(items.map(x => x._2).sum)
+            println(Array.fill(itemsCount){1}.mkString(" "))
+            return
+        }
 
+        // Sort items by decreasing ratio, decreasing weights
+        val sortedItems = items.sortBy(r => (-r._3, r._2))
 
         val Problem = new KnapsackBranchAndBound(sortedItems, capacity)
         val initialCandidate = Problem.root()
 
-        def ordering(t2: (Double,Array[Int])) = t2._1
-        val queue = new PriorityQueue[(Double,Array[Int])]()(Ordering.by(ordering))
-
-        var bestValue      = 0
-        var bestValueCompo = Array.empty[Int]
-
-        val rootNode = (Problem.optimisticHeuristic(initialCandidate), initialCandidate)
-        queue.enqueue(rootNode)
+        // Priority Queue of tuples (optimistic_heuristic, partial_value, candidate)
+        def ordering(t3: (Double,Int,Array[Int])) = (t3._1, t3._2)
+        val queue = new PriorityQueue[(Double,Int,Array[Int])]()(Ordering.by(ordering))
 
         // Start loop
-        while (queue.maxBy(ordering)._1 > bestValue) {
-            for (child <- Problem.children(queue.dequeue._2)) {
+        var bestCandidate = Problem.root()
+        queue.enqueue(bestCandidate)
+        var optiHeuristic = 0.0;
+        var partialValue = 0;
 
-                if (!Problem.reject(child)) {
-                    var childValue      = Problem.candidateValue(child)
-                    val optiHeuristic   = Problem.optimisticHeuristic(child)
-                    if (childValue > bestValue) {
-                        bestValue       = childValue
-                        bestValueCompo  = child
-                    }
-                    queue.enqueue((optiHeuristic, child))
-                    //println("Enqueud %f", optiHeuristic)
+        while (queue.maxBy(ordering)._1 > bestCandidate._2) {
+            for (child <- Problem.children(queue.dequeue)) {
+                if (!Problem.exceedCapacity(child._3)) {
+                    if (child._2 > bestCandidate._2)
+                        bestCandidate = child
+                    queue.enqueue(child)
                 }
             }
-            //println("Queue size:" + queue.size)
         }
 
-        println(bestValue)
-        Problem.output(bestValueCompo)
-
-        // println("Solution size:"+bestValueCompo.size)
-        // println("Solution load:"+Problem.partialWeight(bestValueCompo))
-        // println("Solution value:"+Problem.candidateValue(bestValueCompo))
-
-
+        println(bestCandidate._2)
+        Problem.output(bestCandidate._3)
     }
 }
