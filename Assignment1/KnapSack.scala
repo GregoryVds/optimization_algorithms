@@ -28,11 +28,12 @@ class KnapsackBranchAndBound(items: Array[(Int,Int,Double,Int)], capacity: Int) 
             Seq(leftChild, rightChild)
         }
 
-    def output(candidate: Array[Int]) {
+    def output(candidate: (Double, Int, Array[Int])) {
         var solution = Array.fill(n){0}
-        for (i <- 0 until candidate.length) {
-            solution(index(i)) = candidate(i)
+        for (i <- 0 until candidate._3.length) {
+            solution(index(i)) = candidate._3(i)
         }
+        println(candidate._2)
         println(solution.mkString(" "))
     }
 
@@ -77,7 +78,7 @@ object App {
             index +=1
         }
 
-        // Check for trivial
+        // Check for trivial solution
         if (capacity > items.map(x => x._2).sum) {
             println(items.map(x => x._2).sum)
             println(Array.fill(itemsCount){1}.mkString(" "))
@@ -86,7 +87,6 @@ object App {
 
         // Sort items by decreasing ratio, decreasing weights
         val sortedItems = items.sortBy(r => (-r._3, r._2))
-
         val Problem = new KnapsackBranchAndBound(sortedItems, capacity)
         val initialCandidate = Problem.root()
 
@@ -94,13 +94,12 @@ object App {
         def ordering(t3: (Double,Int,Array[Int])) = (t3._1, t3._2)
         val queue = new PriorityQueue[(Double,Int,Array[Int])]()(Ordering.by(ordering))
 
-        // Start loop
+        // Kickoff Search
         var bestCandidate = Problem.root()
+        val startTime = System.nanoTime()
+        val timeLimit = startTime+(1000*1000*1000*270.toDouble)
         queue.enqueue(bestCandidate)
-        var optiHeuristic = 0.0;
-        var partialValue = 0;
-
-        while (queue.maxBy(ordering)._1 > bestCandidate._2) {
+        while (queue.maxBy(ordering)._1 > bestCandidate._2 && System.nanoTime() < timeLimit) {
             for (child <- Problem.children(queue.dequeue)) {
                 if (!Problem.exceedCapacity(child._3)) {
                     if (child._2 > bestCandidate._2)
@@ -109,8 +108,6 @@ object App {
                 }
             }
         }
-
-        println(bestCandidate._2)
-        Problem.output(bestCandidate._3)
+        Problem.output(bestCandidate)
     }
 }
